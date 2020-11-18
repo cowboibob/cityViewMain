@@ -123,6 +123,7 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         public boolean onTouch(View view, MotionEvent motionEvent) {
             if (AUTO_HIDE) {
             delayedHide(AUTO_HIDE_DELAY_MILLIS);
+            TextView t = (TextView) findViewById(R.id.fullscreen_content);
             t.setText("Button was Pressed");
             }
             return false;
