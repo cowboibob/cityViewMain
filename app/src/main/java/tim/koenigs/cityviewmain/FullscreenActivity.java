@@ -24,14 +24,17 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.location.Location;
+import android.net.wifi.p2p.WifiP2pManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
+import android.util.Pair;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.Animation;
 import android.view.animation.RotateAnimation;
+import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -42,6 +45,9 @@ import android.widget.ImageView;
 
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationServices;
+
+import java.util.HashMap;
+
 
 
 /**
@@ -55,6 +61,10 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
     private View mContentView;
     private ImageView imageView;
     private double pi = Math.PI;
+    private double[] selfLocation = new double[]{0,0,0};
+    private double[] selfLocationDegrees = new double[]{0,0};
+    private HashMap<String, double[]> locationList = new HashMap<String,double[]>();
+
 
     /**
      * Whether or not the system UI should be auto-hidden after
@@ -186,6 +196,10 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
 
         imageView.setBackgroundColor(Color.CYAN);
 
+        fillLocationList();
+
+
+
     }
 
 
@@ -205,7 +219,6 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
     @Override
     protected void onPostCreate(Bundle savedInstanceState) {
         super.onPostCreate(savedInstanceState);
-
         // Trigger the initial hide() shortly after the activity has been
         // created, to briefly hint to the user that UI controls
         // are available.
@@ -261,29 +274,25 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         orientation = calculateOrientation(event);
 
         //1 = Westen , -1 = Osten
-        double a = Math.round((Math.cos(orientation[0])*Math.cos(orientation[1])*Math.sin(orientation[2])+Math.sin(orientation[0])*Math.sin(orientation[1])*Math.cos(orientation[2]))*100);
+        double a = Math.round((Math.cos(orientation[0])*Math.cos(orientation[1])*Math.sin(orientation[2])+Math.sin(orientation[0])*Math.sin(orientation[1])*Math.cos(orientation[2]))*100.0);
         //1 = Norden, -1 = Süden
-        double b = -Math.round((Math.cos(orientation[0])*Math.sin(orientation[1])*Math.cos(orientation[2])+Math.sin(orientation[0])*Math.cos(orientation[1])*Math.sin(orientation[2]))*100);
+        double b = -Math.round((Math.cos(orientation[0])*Math.sin(orientation[1])*Math.cos(orientation[2])+Math.sin(orientation[0])*Math.cos(orientation[1])*Math.sin(orientation[2]))*100.0);
         // 1 = Erd Mitte, 0 = Horizont; -1 Zenit
-        double c = -Math.round(Math.cos(orientation[1])*Math.cos(orientation[2])*100);
+        double c = -Math.round(Math.cos(orientation[1])*Math.cos(orientation[2])*100.0);
+        a = a/100.0;
+        b = b/100.0;
+        c = c/100.0;
 
 
         // orientation values returned by the sensors
         // x = yaw (2*pi) , y = pitch (pi) , z = roll (2*pi)
-        float x = Math.round(orientation[0] *100);
-        float y = Math.round(orientation[1] *100);
-        float z = Math.round(orientation[2] *100);
+        double x = Math.round(orientation[0] *100.0);
+        double y = Math.round(orientation[1] *100.0);
+        double z = Math.round(orientation[2] *100.0);
 
-        a = a/100;
-        b = b/100;
-        c = c/100;
-        x = x/100;
-        y = y/100;
-        z = z/100;
-
-        //direction in degrees
-        long direction = Math.round(Math.sin(x/(2*pi))*360);
-
+        x = x/100.0;
+        y = y/100.0;
+        z = z/100.0;
 
 
         //TODO: draw everything
@@ -296,41 +305,144 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         textPaint.setColor(Color.RED);
         textPaint.setTextSize(30);
 
-        // calculate object locations on screen
-        // Direction = yaw - roll
-        int fieldOfView = 2;
-        double horizon = Math.round(imageView.getHeight()*(c) + imageView.getHeight()/2);
-        double north = (imageView.getWidth()/2) - direction*(imageView.getWidth()/100);
-        double east = (imageView.getWidth()/2) - (direction-90)*(imageView.getWidth()/100);
-        double south = (imageView.getWidth()/2) - (direction-180)*(imageView.getWidth()/100);
-        double south2 = (imageView.getWidth()/2) - (direction+180)*(imageView.getWidth()/100); //south x2 to draw S in sinus overflow
-        double west = (imageView.getWidth()/2) - (direction+90)*(imageView.getWidth()/100);
+        // draw horizon on screen
+        int fieldOfView = 1;
+        double horizon = Math.round(imageView.getHeight()*(c) + imageView.getHeight()/2.0);
 
-
-        //draw objects into bitmap
         canvas.drawRect(0-imageView.getWidth() , imageView.getHeight() ,imageView.getWidth() , Math.round(horizon), paint);
         canvas.drawText("Horizon" ,imageView.getWidth()/2 , Math.round(horizon), textPaint );
-        canvas.drawText("N" ,Math.round(north), Math.round(horizon-40), textPaint );
-        canvas.drawText("O" ,Math.round(east) , Math.round(horizon-40), textPaint );
-        canvas.drawText("S" ,Math.round(south) , Math.round(horizon-40), textPaint );
-        canvas.drawText("S" ,Math.round(south2) , Math.round(horizon-40), textPaint );
-        canvas.drawText("W" ,Math.round(west) , Math.round(horizon-40), textPaint );
+
+
+
+        //draw objects from locationList
+        for (String key: locationList.keySet()) {
+            String name = key;
+            double[] vector = locationList.get(key);
+            double latitude = vector[0];
+            double longitude = vector[1];
+            double[] relativeVector = calculateRelationVector(transformLatLongToXYZ(latitude, longitude));
+            double[] angles;
+            angles = calculateAnglesFromRelationVector(relativeVector);
+
+            //Log.d("mylog","gamma "+ name + " : " + angles[0] + " / " + angles[1] + " / " + relativeVector[0] + " / " + relativeVector[1] + " / " + relativeVector[2]);
+
+            canvas.drawText(name ,imageView.getWidth()/2 , Math.round(angles[0]), textPaint );
+        }
+
+
+
         imageView.setImageBitmap(bitmap);
 
         //rotate depending on roll
         imageView.setRotation(0);
 
-        //remove borders wich appear when rotating
+        //remove borders which appear when rotating
         imageView.setScaleX(fieldOfView);
         imageView.setScaleY(fieldOfView);
 
         // output all Data
         TextView t = (TextView) findViewById(R.id.fullscreen_content);
-        t.setText("Richtung: "+ direction + "°\nWinkel: " + y + "\nRolle: " + z+ "\na = " + a +"\nb = "+ b + "\nc= " + c +  "\nsqrt:" + east);
+        t.setText("Richtung: "+ x + "\nNeigung: " + y + "\nRolle: " + z + "\na = " + a +"\nb = "+ b + "\nc= " + c );
+
+
     }
 
+    public double[] calculateAnglesFromRelationVector(double[] relVec){
+        double[] angles = new double[2];
+        // pitch angle
+        double vecLength = Math.sqrt(relVec[0]*relVec[0]+relVec[1]*relVec[1]+relVec[2]*relVec[2]);
+        double xHeight = vecLength*vecLength/2;
+        double gamma = Math.toDegrees(Math.acos(xHeight/vecLength));
+        angles[0] = gamma;
+
+        //yaw angle
+        //faktor a
+        //transformiere zielvektor auf die Ebene
+        double aNo = (selfLocation[0]*relVec[0]+selfLocation[1]*relVec[1]+selfLocation[2]*relVec[2])/(selfLocation[0]*selfLocation[0]+selfLocation[1]*selfLocation[1]+selfLocation[2]*selfLocation[2]);
+        double zpxNo = relVec[0]-selfLocation[0]*aNo;
+        double zpyNo = relVec[1]-selfLocation[1]*aNo;
+        double zpzNo = relVec[2]-selfLocation[2]*aNo;
+        double betzpNo = Math.sqrt(zpxNo*zpxNo+zpyNo*zpyNo+zpzNo*zpzNo);
+
+        //transformiere referenzvektor auf die Ebene
+        double aRef = (selfLocation[0]*1+selfLocation[1]*0+selfLocation[2]*0)/(selfLocation[0]*selfLocation[0]+selfLocation[1]*selfLocation[1]+selfLocation[2]*selfLocation[2]);
+        double zpxRef = 1-selfLocation[0]*aRef;
+        double zpyRef = 0-selfLocation[1]*aRef;
+        double zpzRef = 0-selfLocation[2]*aRef;
+        double betzpRef = Math.sqrt(zpxRef*zpxRef+zpyRef*zpyRef+zpzRef*zpzRef);
+
+        double alpha = Math.toDegrees(Math.acos((zpxNo*zpxRef + zpyNo*zpyRef + zpzNo*zpzRef) / (betzpNo * betzpRef)));
+
+        angles[1] = alpha;
+        return angles;
+    }
+
+    public void updateLocation(View view) {
+        fillLocationList();
+
+        //TODO remove below
+        for (String key: locationList.keySet()) {
+            String name = key;
+            double[] location = locationList.get(key);
+            double latitude = location[0];
+            double longitude = location[1];
+            double[] xyzLocation = transformLatLongToXYZ(latitude, longitude);
+            double[] relativeVector = calculateRelationVector(xyzLocation);
+            double[] angles;
+            angles = calculateAnglesFromRelationVector(relativeVector);
+
+            Log.d("mylog","gamma "+ name + " : " + angles[0] + " / " + angles[1] + " / " + xyzLocation[0] + " / " + xyzLocation[1] + " / " + xyzLocation[2] + " / " );
+
+        }
+    }
+
+    public void fillLocationList(){
+        //todo automated locationlist from database ?
+        locationList = new HashMap<String,double[]>();
+        locationList.put("Northpole" , new double[]{90.0,0});
+        locationList.put("Southpole" , new double[]{-90.0,0});
+
+        //mirror position over (0/0/0)
+        double coreLat = selfLocationDegrees[0];
+        double coreLng = selfLocationDegrees[1];
+        coreLat = coreLat*(-1);
+        if(coreLng > 0){
+            coreLng = coreLng-180.0;
+        }
+        else{
+            coreLng = coreLng+180.0;
+        }
+        locationList.put("earth center" , new double[]{coreLat, coreLng});
+        locationList.put("Nord" ,  new double[]{selfLocationDegrees[0]+1,selfLocationDegrees[1]+1});
 
 
+        for (String key: locationList.keySet()) {
+            String name = key;
+            double[] coordinates = locationList.get(key);
+            Log.d("mylog","Item in LocationList: " + name + " (" + coordinates[0]+"°|" + coordinates[1] +"°)");
+
+        }
+        Log.d("mylog","Location List loaded");
+
+    }
+
+    public double[] transformLatLongToXYZ(double latitude, double longitude){   //transform longitude and latitude into x,y,z coordinates on a sphere with radius=1 around the point(0,0,0)
+        double[] xyz = new double[]{0.0,0.0,0.0};
+        xyz[0] = Math.sin(Math.toRadians(latitude));
+        xyz[1] = Math.sin(Math.toRadians(longitude))*Math.cos(Math.toRadians(latitude));
+        xyz[2] = Math.cos(Math.toRadians(longitude))*Math.cos(Math.toRadians(latitude));
+
+        return xyz;
+    }
+
+    public double[] calculateRelationVector(double[] location){ //calculate a directional Vector from the current position to given coordinates
+        double[] relationVector = new double[]{0.0,0.0,0.0};
+        relationVector[0] = location[0] - selfLocation[0];
+        relationVector[1] = location[1] - selfLocation[1];
+        relationVector[2] = location[2] - selfLocation[2];
+
+        return relationVector;
+    }
 
 
 
@@ -368,9 +480,17 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
             if (intent.getAction().equals("ACT_LOC")){
                 double lat = intent.getDoubleExtra("latitude",0f);
                 double lng = intent.getDoubleExtra("longitude",0f);
+                selfLocation = transformLatLongToXYZ(lat,lng);
+                selfLocationDegrees[0] = lat;
+                selfLocationDegrees[1] = lng;
+
+                String s1 = String.valueOf(selfLocation[0]);
+                String s2 = String.valueOf(selfLocation[1]);
+                String s3 = String.valueOf(selfLocation[2]);
+
 
                 TextView l = (TextView) findViewById(R.id.location_content);
-                l.setText("Lat: "+ lat+ "\nLng: " + lng);
+                l.setText("Lat: "+ lat+ "\nLng: " + lng + "\n" +s1+ "\n" +s2+ "\n"+s3);
             }
         }
     }

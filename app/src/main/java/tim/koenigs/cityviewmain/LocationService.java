@@ -42,11 +42,13 @@ public class LocationService extends Service {
         };
     }
 
+
     private void requestLocation(){
         LocationRequest locationRequest = new LocationRequest();
         locationRequest.setInterval(5000);
         locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
         fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, Looper.myLooper());
+
     }
 
     @Override
