@@ -325,8 +325,22 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
             angles = calculateAnglesFromRelationVector(relativeVector);
 
             //Log.d("mylog","gamma "+ name + " : " + angles[0] + " / " + angles[1] + " / " + relativeVector[0] + " / " + relativeVector[1] + " / " + relativeVector[2]);
+            float xheight = 0;
+            if(latitude >= 0) {
+                xheight = Math.round(imageView.getHeight() * (c + 1.5) - angles[0] * 1.11 * (imageView.getHeight() / 100));
+            }else{
+                xheight = Math.round(imageView.getHeight() * (c + 1.5) + angles[0] * 1.11 * (imageView.getHeight() / 100));
+            }
 
-            canvas.drawText(name ,imageView.getWidth()/2 , Math.round(angles[0]), textPaint );
+            float xwidth = 0;
+            if(latitude >= 0) {
+                xwidth = Math.round(imageView.getWidth()/2+ ((angles[1]-Math.toDegrees(x)) * 1.11 * (imageView.getHeight() / 100) * Math.toRadians(angles[0])) );
+            }else{
+                xwidth = Math.round(imageView.getWidth()/2- ((angles[1]-Math.toDegrees(x)) * 1.11 * (imageView.getHeight() / 100) * Math.toRadians(angles[0])) );
+            }
+
+            canvas.drawCircle(xwidth, xheight,7, textPaint);
+            canvas.drawText(name ,xwidth+30, xheight , textPaint );
         }
 
 
@@ -353,26 +367,31 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         double vecLength = Math.sqrt(relVec[0]*relVec[0]+relVec[1]*relVec[1]+relVec[2]*relVec[2]);
         double xHeight = vecLength*vecLength/2;
         double gamma = Math.toDegrees(Math.acos(xHeight/vecLength));
+        if(Double.isNaN(gamma)){
+            gamma = 0;
+        }
         angles[0] = gamma;
 
         //yaw angle
         //faktor a
         //transformiere zielvektor auf die Ebene
         double aNo = (selfLocation[0]*relVec[0]+selfLocation[1]*relVec[1]+selfLocation[2]*relVec[2])/(selfLocation[0]*selfLocation[0]+selfLocation[1]*selfLocation[1]+selfLocation[2]*selfLocation[2]);
-        double zpxNo = relVec[0]-selfLocation[0]*aNo;
-        double zpyNo = relVec[1]-selfLocation[1]*aNo;
-        double zpzNo = relVec[2]-selfLocation[2]*aNo;
-        double betzpNo = Math.sqrt(zpxNo*zpxNo+zpyNo*zpyNo+zpzNo*zpzNo);
+        double zpx = relVec[0]-selfLocation[0]*aNo; //pojeziert auf flache erde ebene
+        double zpy = relVec[1]-selfLocation[1]*aNo;
+        double zpz = relVec[2]-selfLocation[2]*aNo;
+        double betzpNo = Math.sqrt(zpx*zpx+zpy*zpy+zpz*zpz);
 
         //transformiere referenzvektor auf die Ebene
         double aRef = (selfLocation[0]*1+selfLocation[1]*0+selfLocation[2]*0)/(selfLocation[0]*selfLocation[0]+selfLocation[1]*selfLocation[1]+selfLocation[2]*selfLocation[2]);
-        double zpxRef = 1-selfLocation[0]*aRef;
+        double zpxRef = 1-selfLocation[0]*aRef; // 1 = Norden !!!
         double zpyRef = 0-selfLocation[1]*aRef;
         double zpzRef = 0-selfLocation[2]*aRef;
         double betzpRef = Math.sqrt(zpxRef*zpxRef+zpyRef*zpyRef+zpzRef*zpzRef);
 
-        double alpha = Math.toDegrees(Math.acos((zpxNo*zpxRef + zpyNo*zpyRef + zpzNo*zpzRef) / (betzpNo * betzpRef)));
-
+        double alpha = Math.toDegrees(Math.acos((zpx*zpxRef + zpy*zpyRef + zpz*zpzRef) / (betzpNo * betzpRef)));
+        if(Double.isNaN(alpha)){
+            alpha = 0;
+        }
         angles[1] = alpha;
         return angles;
     }
@@ -401,6 +420,10 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         locationList = new HashMap<String,double[]>();
         locationList.put("Northpole" , new double[]{90.0,0});
         locationList.put("Southpole" , new double[]{-90.0,0});
+        locationList.put("Mannheim", new double[]{49.5121, 8.5316});
+        locationList.put("Ludwigshafen", new double[]{49.489, 8.3791});
+        locationList.put("Zweibrücken", new double[]{49.245, 9.3634});
+
 
         //mirror position over (0/0/0)
         double coreLat = selfLocationDegrees[0];
@@ -413,8 +436,6 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
             coreLng = coreLng+180.0;
         }
         locationList.put("earth center" , new double[]{coreLat, coreLng});
-        locationList.put("Nord" ,  new double[]{selfLocationDegrees[0]+1,selfLocationDegrees[1]+1});
-
 
         for (String key: locationList.keySet()) {
             String name = key;
