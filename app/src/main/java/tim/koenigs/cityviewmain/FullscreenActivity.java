@@ -321,26 +321,27 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
             double latitude = vector[0];
             double longitude = vector[1];
             double[] relativeVector = calculateRelationVector(transformLatLongToXYZ(latitude, longitude));
-            double[] angles;
-            angles = calculateAnglesFromRelationVector(relativeVector);
+            double[] angles = calculateAnglesFromRelationVector(relativeVector);
 
             //Log.d("mylog","gamma "+ name + " : " + angles[0] + " / " + angles[1] + " / " + relativeVector[0] + " / " + relativeVector[1] + " / " + relativeVector[2]);
-            float xheight = 0;
+            float xheight;
             if(latitude >= 0) {
-                xheight = Math.round(imageView.getHeight() * (c + 1.5) - angles[0] * 1.11 * (imageView.getHeight() / 100));
+                xheight = Math.round(horizon +(angles[0]-90) * (imageView.getHeight() / 90.0));
             }else{
-                xheight = Math.round(imageView.getHeight() * (c + 1.5) + angles[0] * 1.11 * (imageView.getHeight() / 100));
+                double temp = 180 - angles[0];
+                xheight = Math.round(horizon +(90+temp) * (imageView.getHeight() / 90.0));
             }
 
             float xwidth = 0;
             if(latitude >= 0) {
-                xwidth = Math.round(imageView.getWidth()/2+ ((angles[1]-Math.toDegrees(x)) * 1.11 * (imageView.getHeight() / 100) * Math.toRadians(angles[0])) );
+                xwidth = Math.round(imageView.getWidth()/2.0+ ((angles[1]-Math.toDegrees(x)) * (imageView.getHeight() / 90.) *  (180/angles[0]-1)));
             }else{
-                xwidth = Math.round(imageView.getWidth()/2- ((angles[1]-Math.toDegrees(x)) * 1.11 * (imageView.getHeight() / 100) * Math.toRadians(angles[0])) );
+                xwidth = Math.round(imageView.getWidth()/2.0- ((angles[1]-Math.toDegrees(x)) * (imageView.getHeight() / 90.) *  (180/angles[0]-1)));
             }
+            xwidth = imageView.getWidth()/2;
 
             canvas.drawCircle(xwidth, xheight,7, textPaint);
-            canvas.drawText(name ,xwidth+30, xheight , textPaint );
+            canvas.drawText(name ,xwidth+30, xheight+30 , textPaint );
         }
 
 
@@ -355,6 +356,7 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         imageView.setScaleY(fieldOfView);
 
         // output all Data
+        //todo remove (debugging)
         TextView t = (TextView) findViewById(R.id.fullscreen_content);
         t.setText("Richtung: "+ x + "\nNeigung: " + y + "\nRolle: " + z + "\na = " + a +"\nb = "+ b + "\nc= " + c );
 
@@ -364,9 +366,12 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
     public double[] calculateAnglesFromRelationVector(double[] relVec){
         double[] angles = new double[2];
         // pitch angle
+
         double vecLength = Math.sqrt(relVec[0]*relVec[0]+relVec[1]*relVec[1]+relVec[2]*relVec[2]);
-        double xHeight = vecLength*vecLength/2;
-        double gamma = Math.toDegrees(Math.acos(xHeight/vecLength));
+        double vecLengthSelf = Math.sqrt(selfLocation[0]*selfLocation[0]+selfLocation[1]*selfLocation[1]+selfLocation[2]*selfLocation[2]);
+        double scalarProduct = selfLocation[0]*relVec[0]+selfLocation[1]*relVec[1]+selfLocation[2]*relVec[2];
+        double gamma = Math.toDegrees(Math.acos(scalarProduct / (vecLengthSelf*vecLength)));
+
         if(Double.isNaN(gamma)){
             gamma = 0;
         }
@@ -410,7 +415,7 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
             double[] angles;
             angles = calculateAnglesFromRelationVector(relativeVector);
 
-            Log.d("mylog","gamma "+ name + " : " + angles[0] + " / " + angles[1] + " / " + xyzLocation[0] + " / " + xyzLocation[1] + " / " + xyzLocation[2] + " / " );
+            Log.d("mylog","gamma "+ name + " : " + angles[0] + " / " + angles[1] + " / " + relativeVector[0] + " / " + relativeVector[1] + " / " + relativeVector[2] + " / " );
 
         }
     }
@@ -418,11 +423,13 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
     public void fillLocationList(){
         //todo automated locationlist from database ?
         locationList = new HashMap<String,double[]>();
+
         locationList.put("Northpole" , new double[]{90.0,0});
         locationList.put("Southpole" , new double[]{-90.0,0});
         locationList.put("Mannheim", new double[]{49.5121, 8.5316});
         locationList.put("Ludwigshafen", new double[]{49.489, 8.3791});
         locationList.put("Zweibrücken", new double[]{49.245, 9.3634});
+
 
 
         //mirror position over (0/0/0)
@@ -435,7 +442,9 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         else{
             coreLng = coreLng+180.0;
         }
-        locationList.put("earth center" , new double[]{coreLat, coreLng});
+        locationList.put("core" , new double[]{coreLat, coreLng});
+
+
 
         for (String key: locationList.keySet()) {
             String name = key;
@@ -504,6 +513,8 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
                 selfLocation = transformLatLongToXYZ(lat,lng);
                 selfLocationDegrees[0] = lat;
                 selfLocationDegrees[1] = lng;
+
+
 
                 String s1 = String.valueOf(selfLocation[0]);
                 String s2 = String.valueOf(selfLocation[1]);
