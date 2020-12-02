@@ -306,8 +306,9 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         textPaint.setTextSize(30);
 
         // draw horizon on screen
+        double horizon = Math.round(imageView.getHeight() * (c) + imageView.getHeight() / 2.0);
         int fieldOfView = 1;
-        double horizon = Math.round(imageView.getHeight()*(c) + imageView.getHeight()/2.0);
+
 
         canvas.drawRect(0-imageView.getWidth() , imageView.getHeight() ,imageView.getWidth() , Math.round(horizon), paint);
         canvas.drawText("Horizon" ,imageView.getWidth()/2 , Math.round(horizon), textPaint );
@@ -320,10 +321,11 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
             double[] vector = locationList.get(key);
             double latitude = vector[0];
             double longitude = vector[1];
-            double[] relativeVector = calculateRelationVector(transformLatLongToXYZ(latitude, longitude));
+            double[] xyzCoordinates = transformLatLongToXYZ(latitude, longitude);
+            double[] relativeVector = calculateRelationVector(xyzCoordinates);
             double[] angles = calculateAnglesFromRelationVector(relativeVector);
 
-            //Log.d("mylog","gamma "+ name + " : " + angles[0] + " / " + angles[1] + " / " + relativeVector[0] + " / " + relativeVector[1] + " / " + relativeVector[2]);
+            //todo rework below with hesse normal form
             float xheight;
             if(latitude >= 0) {
                 xheight = Math.round(horizon +(angles[0]-90) * (imageView.getHeight() / 90.0));
@@ -333,15 +335,33 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
             }
 
             float xwidth = 0;
-            if(latitude >= 0) {
-                xwidth = Math.round(imageView.getWidth()/2.0+ ((angles[1]-Math.toDegrees(x)) * (imageView.getHeight() / 90.) *  (180/angles[0]-1)));
-            }else{
-                xwidth = Math.round(imageView.getWidth()/2.0- ((angles[1]-Math.toDegrees(x)) * (imageView.getHeight() / 90.) *  (180/angles[0]-1)));
+            double scale = (180 / angles[0] - 1);
+            if(isWest(longitude)) { //west
+                if (latitude >= 0) {
+                    xwidth = Math.round(imageView.getWidth() / 2.0
+                            - angles[1] * (imageView.getHeight() / 90.)* scale
+                            - Math.toDegrees(x) * (imageView.getHeight() / 90.) * scale);
+                } else {
+                    xwidth = Math.round(imageView.getWidth() / 2.0
+                            + angles[1] * (imageView.getHeight() / 90.)* scale
+                            + Math.toDegrees(x) * (imageView.getHeight() / 90.) * scale);
+                }
+            }else{ //east
+                if (latitude >= 0) {
+                    xwidth = Math.round(imageView.getWidth() / 2.0
+                            + angles[1] * (imageView.getHeight() / 90.)* scale
+                            - Math.toDegrees(x) * (imageView.getHeight() / 90.) * scale);
+                } else {
+                    xwidth = Math.round(imageView.getWidth() / 2.0
+                            - angles[1] * (imageView.getHeight() / 90.)* scale
+                            + Math.toDegrees(x) * (imageView.getHeight() / 90.) * scale);
+                }
             }
-            xwidth = imageView.getWidth()/2;
+
+            //xwidth = imageView.getWidth()/2;
 
             canvas.drawCircle(xwidth, xheight,7, textPaint);
-            canvas.drawText(name ,xwidth+30, xheight+30 , textPaint );
+            canvas.drawText(name ,xwidth-30, xheight+30 , textPaint );
         }
 
 
@@ -363,13 +383,48 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
 
     }
 
+    public boolean isWest(double longitude){
+        double modulo = ((selfLocationDegrees[1])-longitude +360)%360;
+
+        if(modulo <= 180) {
+            return true;
+        }else{
+            return false;
+        }
+
+    }
+
+    public boolean isNorth(double[] xyz){
+        //Hesse normalform for distance
+        // get normalvector n
+        double nLat;
+        double nLng;
+        if(selfLocationDegrees[0] >= 0){
+            nLat = 90-selfLocationDegrees[0];
+        }else{
+            nLat = -90-selfLocationDegrees[0];
+        }
+        if(selfLocationDegrees[1] >= 0){
+            nLng = 180-selfLocationDegrees[1];
+        }else{
+            nLng = -180-selfLocationDegrees[1];
+        }
+        double[] n = transformLatLongToXYZ(nLat, nLng);
+
+        return false;
+    }
+
     public double[] calculateAnglesFromRelationVector(double[] relVec){
         double[] angles = new double[2];
         // pitch angle
+        //inverse nullvector
+        double x = -selfLocation[0];
+        double y = -selfLocation[1];
+        double z = -selfLocation[2];
 
         double vecLength = Math.sqrt(relVec[0]*relVec[0]+relVec[1]*relVec[1]+relVec[2]*relVec[2]);
-        double vecLengthSelf = Math.sqrt(selfLocation[0]*selfLocation[0]+selfLocation[1]*selfLocation[1]+selfLocation[2]*selfLocation[2]);
-        double scalarProduct = selfLocation[0]*relVec[0]+selfLocation[1]*relVec[1]+selfLocation[2]*relVec[2];
+        double vecLengthSelf = Math.sqrt(x*x+y*y+z*z);
+        double scalarProduct = x*relVec[0]+y*relVec[1]+z*relVec[2];
         double gamma = Math.toDegrees(Math.acos(scalarProduct / (vecLengthSelf*vecLength)));
 
         if(Double.isNaN(gamma)){
@@ -380,17 +435,17 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         //yaw angle
         //faktor a
         //transformiere zielvektor auf die Ebene
-        double aNo = (selfLocation[0]*relVec[0]+selfLocation[1]*relVec[1]+selfLocation[2]*relVec[2])/(selfLocation[0]*selfLocation[0]+selfLocation[1]*selfLocation[1]+selfLocation[2]*selfLocation[2]);
-        double zpx = relVec[0]-selfLocation[0]*aNo; //pojeziert auf flache erde ebene
-        double zpy = relVec[1]-selfLocation[1]*aNo;
-        double zpz = relVec[2]-selfLocation[2]*aNo;
+        double aNo = (x*relVec[0]+y*relVec[1]+z*relVec[2])/(x*x+y*y+z*z);
+        double zpx = relVec[0]-x*aNo; //pojeziert auf flache erde ebene
+        double zpy = relVec[1]-y*aNo;
+        double zpz = relVec[2]-z*aNo;
         double betzpNo = Math.sqrt(zpx*zpx+zpy*zpy+zpz*zpz);
 
         //transformiere referenzvektor auf die Ebene
-        double aRef = (selfLocation[0]*1+selfLocation[1]*0+selfLocation[2]*0)/(selfLocation[0]*selfLocation[0]+selfLocation[1]*selfLocation[1]+selfLocation[2]*selfLocation[2]);
-        double zpxRef = 1-selfLocation[0]*aRef; // 1 = Norden !!!
-        double zpyRef = 0-selfLocation[1]*aRef;
-        double zpzRef = 0-selfLocation[2]*aRef;
+        double aRef = (x*1+y*0+z*0)/(x*x+y*y+z*z);
+        double zpxRef = 1-x*aRef; // 1 = Norden !!!
+        double zpyRef = 0-y*aRef;
+        double zpzRef = 0-z*aRef;
         double betzpRef = Math.sqrt(zpxRef*zpxRef+zpyRef*zpyRef+zpzRef*zpzRef);
 
         double alpha = Math.toDegrees(Math.acos((zpx*zpxRef + zpy*zpyRef + zpz*zpzRef) / (betzpNo * betzpRef)));
@@ -415,7 +470,7 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
             double[] angles;
             angles = calculateAnglesFromRelationVector(relativeVector);
 
-            Log.d("mylog","gamma "+ name + " : " + angles[0] + " / " + angles[1] + " / " + relativeVector[0] + " / " + relativeVector[1] + " / " + relativeVector[2] + " / " );
+            Log.d("mylog","gamma "+ name + " : " + angles[0] + " / " + angles[1]  );
 
         }
     }
@@ -424,11 +479,13 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         //todo automated locationlist from database ?
         locationList = new HashMap<String,double[]>();
 
-        locationList.put("Northpole" , new double[]{90.0,0});
-        locationList.put("Southpole" , new double[]{-90.0,0});
+        //locationList.put("Northpole" , new double[]{90.0,0});
+        //locationList.put("Southpole" , new double[]{-90.0,0});
         locationList.put("Mannheim", new double[]{49.5121, 8.5316});
-        locationList.put("Ludwigshafen", new double[]{49.489, 8.3791});
-        locationList.put("Zweibrücken", new double[]{49.245, 9.3634});
+        //locationList.put("Ludwigshafen", new double[]{49.489, 8.3791});
+        locationList.put("Zweibrücken", new double[]{49.245, 7.3634});
+
+
 
 
 
@@ -443,6 +500,8 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
             coreLng = coreLng+180.0;
         }
         locationList.put("core" , new double[]{coreLat, coreLng});
+        locationList.put("south of core" , new double[]{coreLat+10, selfLocationDegrees[1]});
+        locationList.put("north of core" , new double[]{coreLat-10, coreLng});
 
 
 
