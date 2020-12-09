@@ -273,26 +273,20 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         float[] orientation = new float[3];
         orientation = calculateOrientation(event);
 
-        //1 = Westen , -1 = Osten
-        double a = Math.round((Math.cos(orientation[0])*Math.cos(orientation[1])*Math.sin(orientation[2])+Math.sin(orientation[0])*Math.sin(orientation[1])*Math.cos(orientation[2]))*100.0);
-        //1 = Norden, -1 = Süden
-        double b = -Math.round((Math.cos(orientation[0])*Math.sin(orientation[1])*Math.cos(orientation[2])+Math.sin(orientation[0])*Math.cos(orientation[1])*Math.sin(orientation[2]))*100.0);
+        //1 = Westen , -1 = Osten ueseless
+        double a = (Math.cos(orientation[0])*Math.cos(orientation[1])*Math.sin(orientation[2])+Math.sin(orientation[0])*Math.sin(orientation[1])*Math.cos(orientation[2]));
+        //1 = Norden, -1 = Süden useless
+        double b = -(Math.cos(orientation[0])*Math.sin(orientation[1])*Math.cos(orientation[2])+Math.sin(orientation[0])*Math.cos(orientation[1])*Math.sin(orientation[2]));
         // 1 = Erd Mitte, 0 = Horizont; -1 Zenit
-        double c = -Math.round(Math.cos(orientation[1])*Math.cos(orientation[2])*100.0);
-        a = a/100.0;
-        b = b/100.0;
-        c = c/100.0;
+        double c = -Math.cos(orientation[1])*Math.cos(orientation[2]);
+
 
 
         // orientation values returned by the sensors
         // x = yaw (2*pi) , y = pitch (pi) , z = roll (2*pi)
-        double x = Math.round(orientation[0] *100.0);
-        double y = Math.round(orientation[1] *100.0);
-        double z = Math.round(orientation[2] *100.0);
-
-        x = x/100.0;
-        y = y/100.0;
-        z = z/100.0;
+        double x = orientation[0];
+        double y = orientation[1];
+        double z = orientation[2];
 
 
         //TODO: draw everything
@@ -305,13 +299,29 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         textPaint.setColor(Color.RED);
         textPaint.setTextSize(30);
 
+
+        double coreHeight = 0;
+        double horizon = 0;
+        double horizonEnd = 0;
+
+        double direction = Math.toDegrees(x);
+
+
         // draw horizon on screen
-        double horizon = Math.round(imageView.getHeight() * (c) + imageView.getHeight() / 2.0);
-        int fieldOfView = 1;
+        if(y <=0) {
+            coreHeight = imageView.getHeight() / 2.0 + imageView.getHeight()/90 * (Math.toDegrees(y*(-1)));
+            horizon = coreHeight - imageView.getHeight();
+            horizonEnd = imageView.getHeight();
+        }else{
+            coreHeight = imageView.getHeight() / 2.0 + imageView.getHeight()/90 * (Math.toDegrees(y*(-1)));
+            horizonEnd  = coreHeight + imageView.getHeight();
+            horizon = 0;
+        }
 
 
-        canvas.drawRect(0-imageView.getWidth() , imageView.getHeight() ,imageView.getWidth() , Math.round(horizon), paint);
+        canvas.drawRect(0 , Math.round(horizonEnd) ,imageView.getWidth() , Math.round(horizon), paint);
         canvas.drawText("Horizon" ,imageView.getWidth()/2 , Math.round(horizon), textPaint );
+        canvas.drawText("CORE" ,imageView.getWidth()/2 , Math.round(coreHeight), textPaint );
 
 
 
@@ -325,43 +335,79 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
             double[] relativeVector = calculateRelationVector(xyzCoordinates);
             double[] angles = calculateAnglesFromRelationVector(relativeVector);
 
-            //todo rework below with hesse normal form
-            float xheight;
-            if(latitude >= 0) {
-                xheight = Math.round(horizon +(angles[0]-90) * (imageView.getHeight() / 90.0));
-            }else{
-                double temp = 180 - angles[0];
-                xheight = Math.round(horizon +(90+temp) * (imageView.getHeight() / 90.0));
-            }
-
-            float xwidth = 0;
-            double scale = (180 / angles[0] - 1);
-            if(isWest(longitude)) { //west
-                if (latitude >= 0) {
-                    xwidth = Math.round(imageView.getWidth() / 2.0
-                            - angles[1] * (imageView.getHeight() / 90.)* scale
-                            - Math.toDegrees(x) * (imageView.getHeight() / 90.) * scale);
-                } else {
-                    xwidth = Math.round(imageView.getWidth() / 2.0
-                            + angles[1] * (imageView.getHeight() / 90.)* scale
-                            + Math.toDegrees(x) * (imageView.getHeight() / 90.) * scale);
-                }
-            }else{ //east
-                if (latitude >= 0) {
-                    xwidth = Math.round(imageView.getWidth() / 2.0
-                            + angles[1] * (imageView.getHeight() / 90.)* scale
-                            - Math.toDegrees(x) * (imageView.getHeight() / 90.) * scale);
-                } else {
-                    xwidth = Math.round(imageView.getWidth() / 2.0
-                            - angles[1] * (imageView.getHeight() / 90.)* scale
-                            + Math.toDegrees(x) * (imageView.getHeight() / 90.) * scale);
+            if(Double.isNaN(angles[1])){
+                if(selfLocationDegrees[1] == longitude || latitude == -90) {
+                    if (selfLocationDegrees[0] > latitude){
+                        angles[1] = 180;
+                    }
+                }else{
+                    angles[1] = 0;
                 }
             }
+            
+            double xHeight;
+            double xWidth;
 
-            //xwidth = imageView.getWidth()/2;
 
-            canvas.drawCircle(xwidth, xheight,7, textPaint);
-            canvas.drawText(name ,xwidth-30, xheight+30 , textPaint );
+            double offsetHeight = angles[0]  * imageView.getHeight() / 90;                      //hypothenuse
+            double offset = 0;                   //above the core
+
+            xHeight =  coreHeight - offsetHeight*Math.cos(Math.toRadians(angles[1]-direction));
+            //offset = offsetHeight*Math.sin(Math.toRadians(angles[1]-direction));
+            //xWidth = imageView.getWidth()/2. + offset;
+
+            if (isWest(longitude)) { // left of viewing angle
+                if(direction < -90){
+                    angles[1] = angles[1]-360;
+                }
+                offset = offsetHeight*Math.sin(Math.toRadians(angles[1]-direction));
+                xWidth = imageView.getWidth()/2. + offset;
+
+            } else { // right of viewing angle
+                if(direction >= 90){
+                    angles[1] = angles[1]-360;
+                }
+                offset = offsetHeight*Math.sin(Math.toRadians(angles[1]-direction));
+                xWidth = imageView.getWidth()/2. + offset;
+            }
+            /*
+            if(angles[1] <= 90){ // more "north" (higher than the core)
+
+                xHeight =  coreHeight - offsetHeight*Math.cos(Math.toRadians(angles[1]-direction));
+
+                if(isWest(longitude)) { //left of viewing angle
+                    offset = offsetHeight*Math.sin(Math.toRadians(angles[1]-direction));
+                    xWidth = imageView.getWidth()/2. + offset;
+
+                }else { // right of viewing angle
+                    offset = offsetHeight*Math.sin(Math.toRadians(angles[1]-direction));
+                    xWidth = imageView.getWidth()/2. + offset;
+                }
+            }else { // more "south" (lower than the core)
+                xHeight  = coreHeight + offsetHeight*Math.cos(Math.toRadians(angles[1]+direction));
+
+                if (isWest(longitude)) { // left of viewing angle
+                    if(direction < -90){
+                        //angles[1] = angles[1]-360;
+                    }
+                    offset = offsetHeight*Math.sin(Math.toRadians(angles[1]-direction));
+                    xWidth = imageView.getWidth()/2. + offset;
+
+                } else { // right of viewing angle
+                    if(direction >= 90){
+                        //angles[1] = angles[1]-360;
+                    }
+                    offset = -offsetHeight*Math.sin(Math.toRadians(angles[1]-direction));
+                    xWidth = imageView.getWidth()/2. + offset;
+                }
+
+            }
+
+             */
+
+            canvas.drawCircle(Math.round(xWidth), Math.round(xHeight),7, textPaint);
+            canvas.drawText(name + "| " + offset  ,Math.round(xWidth-30), Math.round(xHeight+30) , textPaint);
+
         }
 
 
@@ -372,13 +418,14 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         imageView.setRotation(0);
 
         //remove borders which appear when rotating
+        int fieldOfView = 1;
         imageView.setScaleX(fieldOfView);
         imageView.setScaleY(fieldOfView);
 
         // output all Data
         //todo remove (debugging)
         TextView t = (TextView) findViewById(R.id.fullscreen_content);
-        t.setText("Richtung: "+ x + "\nNeigung: " + y + "\nRolle: " + z + "\na = " + a +"\nb = "+ b + "\nc= " + c );
+        t.setText("Richtung: "+ direction + "\nNeigung: " + y + "\nRolle: " + z + "\na = " + a +"\nb = "+ b + "\nc= " + c );
 
 
     }
@@ -394,25 +441,6 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
 
     }
 
-    public boolean isNorth(double[] xyz){
-        //Hesse normalform for distance
-        // get normalvector n
-        double nLat;
-        double nLng;
-        if(selfLocationDegrees[0] >= 0){
-            nLat = 90-selfLocationDegrees[0];
-        }else{
-            nLat = -90-selfLocationDegrees[0];
-        }
-        if(selfLocationDegrees[1] >= 0){
-            nLng = 180-selfLocationDegrees[1];
-        }else{
-            nLng = -180-selfLocationDegrees[1];
-        }
-        double[] n = transformLatLongToXYZ(nLat, nLng);
-
-        return false;
-    }
 
     public double[] calculateAnglesFromRelationVector(double[] relVec){
         double[] angles = new double[2];
@@ -449,9 +477,7 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         double betzpRef = Math.sqrt(zpxRef*zpxRef+zpyRef*zpyRef+zpzRef*zpzRef);
 
         double alpha = Math.toDegrees(Math.acos((zpx*zpxRef + zpy*zpyRef + zpz*zpzRef) / (betzpNo * betzpRef)));
-        if(Double.isNaN(alpha)){
-            alpha = 0;
-        }
+
         angles[1] = alpha;
         return angles;
     }
@@ -479,29 +505,13 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         //todo automated locationlist from database ?
         locationList = new HashMap<String,double[]>();
 
-        //locationList.put("Northpole" , new double[]{90.0,0});
-        //locationList.put("Southpole" , new double[]{-90.0,0});
+        locationList.put("Northpole" , new double[]{90.0,0});
+        locationList.put("Southpole" , new double[]{-90.0,0});
         locationList.put("Mannheim", new double[]{49.5121, 8.5316});
-        //locationList.put("Ludwigshafen", new double[]{49.489, 8.3791});
+        locationList.put("Ludwigshafen", new double[]{49.489, 8.3791});
         locationList.put("Zweibrücken", new double[]{49.245, 7.3634});
+        locationList.put("Karlsruhe", new double[]{48.489, 8.6791});
 
-
-
-
-
-        //mirror position over (0/0/0)
-        double coreLat = selfLocationDegrees[0];
-        double coreLng = selfLocationDegrees[1];
-        coreLat = coreLat*(-1);
-        if(coreLng > 0){
-            coreLng = coreLng-180.0;
-        }
-        else{
-            coreLng = coreLng+180.0;
-        }
-        locationList.put("core" , new double[]{coreLat, coreLng});
-        locationList.put("south of core" , new double[]{coreLat+10, selfLocationDegrees[1]});
-        locationList.put("north of core" , new double[]{coreLat-10, coreLng});
 
 
 
