@@ -61,6 +61,7 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
     private View mContentView;
     private ImageView imageView;
     private double pi = Math.PI;
+    private double earthRadius = 6378.137;
     private double[] selfLocation = new double[]{0,0,0};
     private double[] selfLocationDegrees = new double[]{0,0};
     private HashMap<String, double[]> locationList = new HashMap<String,double[]>();
@@ -153,6 +154,8 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         imageView = findViewById(R.id.imageView);
         sensorManager = (SensorManager)getSystemService((Context.SENSOR_SERVICE));
         sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
+        
+
 
 
         if (sensor != null)
@@ -268,19 +271,11 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         mHideHandler.postDelayed(mHideRunnable, delayMillis);
     }
 
+
     @Override
     public void onSensorChanged(SensorEvent event) {
         float[] orientation = new float[3];
         orientation = calculateOrientation(event);
-
-        //1 = Westen , -1 = Osten ueseless
-        double a = (Math.cos(orientation[0])*Math.cos(orientation[1])*Math.sin(orientation[2])+Math.sin(orientation[0])*Math.sin(orientation[1])*Math.cos(orientation[2]));
-        //1 = Norden, -1 = Süden useless
-        double b = -(Math.cos(orientation[0])*Math.sin(orientation[1])*Math.cos(orientation[2])+Math.sin(orientation[0])*Math.cos(orientation[1])*Math.sin(orientation[2]));
-        // 1 = Erd Mitte, 0 = Horizont; -1 Zenit
-        double c = -Math.cos(orientation[1])*Math.cos(orientation[2]);
-
-
 
         // orientation values returned by the sensors
         // x = yaw (2*pi) , y = pitch (pi) , z = roll (2*pi)
@@ -288,40 +283,66 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         double y = orientation[1];
         double z = orientation[2];
 
+        //angles in degrees
+        double yaw = Math.toDegrees(x);
+        double pitch = Math.toDegrees(y);
+        double roll = Math.toDegrees(z);
+
+        //adjust values if phone is upside down
+
+        if(roll <= -90 || roll >= 90){
+            if(yaw <= 0){
+                yaw = 180 + yaw;
+            }else{
+                yaw = yaw - 180;
+            }
+            pitch = -180 - pitch;
+            if(pitch <-180){
+                pitch = pitch+360;
+            }
+
+            if(roll <= -90){
+                roll = roll + 180;
+            }else if(roll >= 90){
+                roll = roll -180;
+            }
+
+        }
+
+
+
+        //1 = Westen , -1 = Osten ueseless
+        double a = (Math.cos(x)*Math.cos(y)*Math.sin(z)+Math.sin(x)*Math.sin(y)*Math.cos(z));
+        //1 = Norden, -1 = Süden useless
+        double b = -(Math.cos(x)*Math.sin(y)*Math.cos(z)+Math.sin(x)*Math.cos(y)*Math.sin(z));
+        // 1 = Erd Mitte, 0 = Horizont; -1 Zenit
+        double c = -Math.cos(y)*Math.cos(z);
+
 
         //TODO: draw everything
         Bitmap bitmap =  Bitmap.createBitmap(imageView.getWidth() , imageView.getHeight() , Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
         Paint paint = new Paint();
-        paint.setColor(Color.BLACK);
+        paint.setColor(Color.BLUE);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(8);
 
         Paint textPaint = new Paint();
         textPaint.setColor(Color.RED);
         textPaint.setTextSize(30);
 
 
-        double coreHeight = 0;
-        double horizon = 0;
-        double horizonEnd = 0;
+        double coreHeight;
+        double coreWidth;
 
-        double direction = Math.toDegrees(x);
-
-
-        // draw horizon on screen
-        if(y <=0) {
-            coreHeight = imageView.getHeight() / 2.0 + imageView.getHeight()/90 * (Math.toDegrees(y*(-1)));
-            horizon = coreHeight - imageView.getHeight();
-            horizonEnd = imageView.getHeight();
-        }else{
-            coreHeight = imageView.getHeight() / 2.0 + imageView.getHeight()/90 * (Math.toDegrees(y*(-1)));
-            horizonEnd  = coreHeight + imageView.getHeight();
-            horizon = 0;
-        }
+        coreHeight = imageView.getHeight() / 2f + imageView.getHeight() / 90f * (pitch*(-1));
+        coreWidth = imageView.getWidth() / 2f + imageView.getHeight() / 90f * roll;
 
 
-        canvas.drawRect(0 , Math.round(horizonEnd) ,imageView.getWidth() , Math.round(horizon), paint);
-        canvas.drawText("Horizon" ,imageView.getWidth()/2 , Math.round(horizon), textPaint );
-        canvas.drawText("CORE" ,imageView.getWidth()/2 , Math.round(coreHeight), textPaint );
+        //draw constant points
+        canvas.drawCircle(Math.round(coreWidth), Math.round(coreHeight),Math.round(imageView.getHeight()), paint);
+        canvas.drawCircle(Math.round(coreWidth), Math.round(coreHeight),7, textPaint);
+        canvas.drawText("CORE"+ " ("+ earthRadius + "km)" ,Math.round(coreWidth-30) , Math.round(coreHeight-30), textPaint );
 
 
 
@@ -349,64 +370,27 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
             double xWidth;
 
 
-            double offsetHeight = angles[0]  * imageView.getHeight() / 90;                      //hypothenuse
-            double offset = 0;                   //above the core
+            double offsetHeight = angles[0]  * imageView.getHeight() / 90;          //hypothenuse
+            double offset;                                                          //above the core
 
-            xHeight =  coreHeight - offsetHeight*Math.cos(Math.toRadians(angles[1]-direction));
-            //offset = offsetHeight*Math.sin(Math.toRadians(angles[1]-direction));
-            //xWidth = imageView.getWidth()/2. + offset;
+
 
             if (isWest(longitude)) { // left of viewing angle
-                if(direction < -90){
-                    angles[1] = angles[1]-360;
-                }
-                offset = offsetHeight*Math.sin(Math.toRadians(angles[1]-direction));
-                xWidth = imageView.getWidth()/2. + offset;
+                xHeight =  coreHeight - offsetHeight*Math.cos(Math.toRadians(angles[1]+yaw));
+                offset = offsetHeight*Math.sin(Math.toRadians(angles[1]+yaw));
+                xWidth = coreWidth - offset;
 
             } else { // right of viewing angle
-                if(direction >= 90){
-                    angles[1] = angles[1]-360;
-                }
-                offset = offsetHeight*Math.sin(Math.toRadians(angles[1]-direction));
-                xWidth = imageView.getWidth()/2. + offset;
-            }
-            /*
-            if(angles[1] <= 90){ // more "north" (higher than the core)
-
-                xHeight =  coreHeight - offsetHeight*Math.cos(Math.toRadians(angles[1]-direction));
-
-                if(isWest(longitude)) { //left of viewing angle
-                    offset = offsetHeight*Math.sin(Math.toRadians(angles[1]-direction));
-                    xWidth = imageView.getWidth()/2. + offset;
-
-                }else { // right of viewing angle
-                    offset = offsetHeight*Math.sin(Math.toRadians(angles[1]-direction));
-                    xWidth = imageView.getWidth()/2. + offset;
-                }
-            }else { // more "south" (lower than the core)
-                xHeight  = coreHeight + offsetHeight*Math.cos(Math.toRadians(angles[1]+direction));
-
-                if (isWest(longitude)) { // left of viewing angle
-                    if(direction < -90){
-                        //angles[1] = angles[1]-360;
-                    }
-                    offset = offsetHeight*Math.sin(Math.toRadians(angles[1]-direction));
-                    xWidth = imageView.getWidth()/2. + offset;
-
-                } else { // right of viewing angle
-                    if(direction >= 90){
-                        //angles[1] = angles[1]-360;
-                    }
-                    offset = -offsetHeight*Math.sin(Math.toRadians(angles[1]-direction));
-                    xWidth = imageView.getWidth()/2. + offset;
-                }
-
+                xHeight =  coreHeight - offsetHeight*Math.cos(Math.toRadians(angles[1]-yaw));
+                offset = offsetHeight*Math.sin(Math.toRadians(angles[1]-yaw));
+                xWidth = coreWidth + offset;
             }
 
-             */
-
+            //distance in KM: Radius = 1  results in earth radius = 6378.137 km
+            //length of relativeVector*earthRadius = distance
+            long distanceInKM = Math.round(Math.sqrt(relativeVector[0]*relativeVector[0]+relativeVector[1]*relativeVector[1]+relativeVector[2]*relativeVector[2])*earthRadius);
             canvas.drawCircle(Math.round(xWidth), Math.round(xHeight),7, textPaint);
-            canvas.drawText(name + "| " + offset  ,Math.round(xWidth-30), Math.round(xHeight+30) , textPaint);
+            canvas.drawText(name + " ("+ distanceInKM + "km)", Math.round(xWidth-30), Math.round(xHeight+30), textPaint);
 
         }
 
@@ -425,10 +409,11 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         // output all Data
         //todo remove (debugging)
         TextView t = (TextView) findViewById(R.id.fullscreen_content);
-        t.setText("Richtung: "+ direction + "\nNeigung: " + y + "\nRolle: " + z + "\na = " + a +"\nb = "+ b + "\nc= " + c );
+        t.setText("Richtung: "+ yaw + "\nNeigung: " +pitch + "\nRolle: " + roll + "\n"+ "\na = " + a +"\nb = "+ b + "\nc= " + c );
 
 
     }
+
 
     public boolean isWest(double longitude){
         double modulo = ((selfLocationDegrees[1])-longitude +360)%360;
@@ -510,8 +495,7 @@ public class FullscreenActivity extends AppCompatActivity implements SensorEvent
         locationList.put("Mannheim", new double[]{49.5121, 8.5316});
         locationList.put("Ludwigshafen", new double[]{49.489, 8.3791});
         locationList.put("Zweibrücken", new double[]{49.245, 7.3634});
-        locationList.put("Karlsruhe", new double[]{48.489, 8.6791});
-
+        locationList.put("Karlsruhe", new double[]{49.007, 8.404});
 
 
 
